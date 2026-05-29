@@ -1,0 +1,22 @@
+# Theos build artifacts
+.theos/
+obj/
+build/
+packages/
+*.deb
+*.ipa
+*.dylib
+*.bundle
+
+# IDE / OS
+.DS_Store
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Local dev / harness configs (per-clone)
+.claude/
+
+# Temp build staging (build_ipa.sh writes here)
+/tmp/
