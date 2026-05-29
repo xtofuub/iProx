@@ -11,11 +11,21 @@ static NSString *_HexFromBytes(const uint8_t *p, NSUInteger n) {
 }
 
 static NSDictionary *_DecodeAirDrop(const uint8_t *v, NSUInteger n) {
+    // Apple Continuity AirDrop TLV (type 0x05), typically 18 bytes of value:
+    //   v[0..7]   8 bytes of zero/version padding
+    //   v[8..9]   AppleID hash prefix (2 bytes)
+    //   v[10..11] phone hash prefix (2 bytes)
+    //   v[12..13] email hash prefix (2 bytes)
+    //   v[14..15] email2 hash prefix (2 bytes)
+    //   v[16]     AppleID auth tag / version byte
+    // Cross-checked against hexway/apple_bleee and furiousMAC notes.
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     d[@"raw"] = _HexFromBytes(v, n);
-    if (n >= 2) d[@"phone_hash"] = _HexFromBytes(v, 2);
-    if (n >= 4) d[@"email_hash"] = _HexFromBytes(v + 2, 2);
-    if (n >= 6) d[@"appleid_hash"] = _HexFromBytes(v + 4, 2);
+    if (n >= 10) d[@"appleid_hash"] = _HexFromBytes(v + 8, 2);
+    if (n >= 12) d[@"phone_hash"]   = _HexFromBytes(v + 10, 2);
+    if (n >= 14) d[@"email_hash"]   = _HexFromBytes(v + 12, 2);
+    if (n >= 16) d[@"email2_hash"]  = _HexFromBytes(v + 14, 2);
+    if (n >= 17) d[@"version_byte"] = [NSString stringWithFormat:@"0x%02X", v[16]];
     return d;
 }
 
