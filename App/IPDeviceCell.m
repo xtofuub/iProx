@@ -83,7 +83,7 @@
 
         [self.subtitleLabel.leadingAnchor constraintEqualToAnchor:self.titleLabel.leadingAnchor],
         [self.subtitleLabel.topAnchor constraintEqualToAnchor:self.titleLabel.bottomAnchor constant:2],
-        [self.subtitleLabel.trailingAnchor constraintEqualToAnchor:g.trailingAnchor],
+        [self.subtitleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:self.rssiLabel.leadingAnchor constant:-8],
 
         [self.badgesStack.leadingAnchor constraintEqualToAnchor:self.titleLabel.leadingAnchor],
         [self.badgesStack.topAnchor constraintEqualToAnchor:self.subtitleLabel.bottomAnchor constant:4],
