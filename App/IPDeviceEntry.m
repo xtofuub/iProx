@@ -48,12 +48,22 @@
     IPContinuityRecord *pp = [self _latestRecordOfType:IPContinuityTypeProximityPairing];
     if (pp) {
         NSString *model = pp.fields[@"model"];
-        NSString *bL = pp.fields[@"battery_left"] ?: @"?";
+        NSString *bL = pp.fields[@"battery_left"]  ?: @"?";
         NSString *bR = pp.fields[@"battery_right"] ?: @"?";
         NSString *bc = pp.fields[@"case_battery"];
+        BOOL lCh    = [pp.fields[@"left_charging"]  boolValue];
+        BOOL rCh    = [pp.fields[@"right_charging"] boolValue];
+        BOOL cCh    = [pp.fields[@"case_charging"]  boolValue];
+        BOOL inCase = [pp.fields[@"in_case"]        boolValue];
         if (model) {
-            if (bc) return [NSString stringWithFormat:@"%@  L:%@  R:%@  case:%@", model, bL, bR, bc];
-            return [NSString stringWithFormat:@"%@  L:%@  R:%@", model, bL, bR];
+            NSString *lTag = lCh ? @"+" : @"";
+            NSString *rTag = rCh ? @"+" : @"";
+            NSString *cTag = cCh ? @"+" : @"";
+            NSMutableString *s = [NSMutableString stringWithFormat:@"%@  L:%@%@  R:%@%@",
+                                  model, bL, lTag, bR, rTag];
+            if (bc) [s appendFormat:@"  case:%@%@", bc, cTag];
+            if (inCase) [s appendString:@"  in-case"];
+            return s;
         }
     }
     IPContinuityRecord *wc = [self _latestRecordOfType:IPContinuityTypeWatchConnection];
@@ -82,12 +92,23 @@
         NSString *name = na.fields[@"action_name"];
         if (name) return [NSString stringWithFormat:@"action: %@", name];
     }
+    IPContinuityRecord *tt = [self _latestRecordOfType:IPContinuityTypeTetheringTarget];
+    if (tt) {
+        NSString *batt = tt.fields[@"battery_percent"] ?: @"?";
+        NSString *cell = tt.fields[@"cell_service"]    ?: @"?";
+        NSNumber *bars = tt.fields[@"cell_bars"];
+        return [NSString stringWithFormat:@"Tether  batt=%@  %@ %@bars",
+                batt, cell, bars ?: @"?"];
+    }
     IPContinuityRecord *fm = [self _latestRecordOfType:IPContinuityTypeFindMy];
     if (fm) {
-        NSNumber *batt = fm.fields[@"battery_state"];
+        id batt = fm.fields[@"battery_state"];
         BOOL lost = [fm.fields[@"lost_mode"] boolValue];
-        return [NSString stringWithFormat:@"FindMy  batt=%@%@",
-                batt ?: @"?", lost ? @"  LOST" : @""];
+        BOOL oas  = [fm.fields[@"oas_frame"] boolValue];
+        return [NSString stringWithFormat:@"FindMy  batt=%@%@%@",
+                batt ?: @"?",
+                oas  ? @"  owner-nearby" : @"  separated",
+                lost ? @"  LOST" : @""];
     }
     IPContinuityRecord *ad = [self _latestRecordOfType:IPContinuityTypeAirDrop];
     if (ad) {

@@ -34,9 +34,13 @@ static NSString *_AirPodsModel(uint16_t code) {
         case 0x0220: return @"AirPods 1";
         case 0x0F20: return @"AirPods 2";
         case 0x1320: return @"AirPods 3";
+        case 0x1920: return @"AirPods 4";
+        case 0x2024: return @"AirPods 4 ANC";
         case 0x0E20: return @"AirPods Pro";
-        case 0x1420: return @"AirPods Pro 2";
+        case 0x1420: return @"AirPods Pro 2 (Lightning)";
+        case 0x2420: return @"AirPods Pro 2 (USB-C)";
         case 0x0A20: return @"AirPods Max";
+        case 0x1F20: return @"AirPods Max (USB-C)";
         case 0x0520: return @"BeatsX";
         case 0x0620: return @"Beats Solo3";
         case 0x0920: return @"BeatsStudio3";
@@ -46,8 +50,18 @@ static NSString *_AirPodsModel(uint16_t code) {
         case 0x1120: return @"PowerBeats4";
         case 0x1720: return @"Beats Studio Buds";
         case 0x1B20: return @"Beats Fit Pro";
-        default:     return @"unknown";
+        case 0x2120: return @"Beats Studio Buds+";
+        case 0x2320: return @"Beats Studio Pro";
+        default:     return [NSString stringWithFormat:@"unknown (0x%04X)", code];
     }
+}
+
+// Nibble -> "N%" string. AirPods battery fields use 0x0F as the
+// "disconnected / unknown" sentinel; never report > 100%.
+static NSString *_BatteryPercent(uint8_t nibble) {
+    if (nibble == 0x0F) return @"?";
+    NSUInteger pct = MIN((NSUInteger)nibble * 10, 100u);
+    return [NSString stringWithFormat:@"%lu%%", (unsigned long)pct];
 }
 
 static NSDictionary *_DecodeProximityPairing(const uint8_t *v, NSUInteger n) {
@@ -60,13 +74,25 @@ static NSDictionary *_DecodeProximityPairing(const uint8_t *v, NSUInteger n) {
     }
     if (n >= 5) {
         uint8_t batt = v[4];
-        d[@"battery_right"] = [NSString stringWithFormat:@"%u%%", (batt & 0x0F) * 10];
-        d[@"battery_left"]  = [NSString stringWithFormat:@"%u%%", ((batt >> 4) & 0x0F) * 10];
+        d[@"battery_right"] = _BatteryPercent(batt & 0x0F);
+        d[@"battery_left"]  = _BatteryPercent((batt >> 4) & 0x0F);
     }
     if (n >= 6) {
         uint8_t casebyte = v[5];
-        d[@"case_battery"]  = [NSString stringWithFormat:@"%u%%", (casebyte & 0x0F) * 10];
-        d[@"case_charging"] = @((casebyte & 0x40) != 0);
+        // Low nibble: case battery (0xF = unknown).
+        // Upper nibble: charging-state bit field.
+        d[@"case_battery"]   = _BatteryPercent(casebyte & 0x0F);
+        d[@"right_charging"] = @((casebyte & 0x10) != 0);
+        d[@"left_charging"]  = @((casebyte & 0x20) != 0);
+        d[@"case_charging"]  = @((casebyte & 0x40) != 0);
+        d[@"in_case"]        = @((casebyte & 0x80) != 0);
+    }
+    if (n >= 7) {
+        // Byte 6 carries a lid-open counter (bits 0-2) and a device color id
+        // (bits 3-7). Useful for spotting AirPods that just opened their case.
+        uint8_t b6 = v[6];
+        d[@"lid_open_counter"] = @(b6 & 0x07);
+        d[@"device_color_id"]  = [NSString stringWithFormat:@"0x%02X", (b6 >> 3) & 0x1F];
     }
     return d;
 }
@@ -140,11 +166,17 @@ static NSDictionary *_DecodeFindMy(const uint8_t *v, NSUInteger n) {
     if (n >= 1) {
         uint8_t status = v[0];
         d[@"status_byte"]   = [NSString stringWithFormat:@"0x%02X", status];
-        d[@"battery_state"] = @((status >> 6) & 0x03);
+        static NSString *batt[] = { @"full", @"medium", @"low", @"critical" };
+        d[@"battery_state"] = batt[(status >> 6) & 0x03];
         d[@"lost_mode"]     = @((status & 0x04) != 0);
         d[@"maintained"]    = @((status & 0x02) != 0);
+        // Bit 5 of byte 0 distinguishes Owner Always Send (OAS) frames
+        // (24 bytes, sees its owner) from separated frames (≥27 bytes).
+        d[@"oas_frame"]     = @((status & 0x20) != 0);
     }
     if (n >= 23) d[@"public_key_prefix"] = _HexFromBytes(v + 1, 22);
+    if (n >= 25) d[@"public_key_bits"]   = [NSString stringWithFormat:@"0x%02X", v[23] & 0x03];
+    if (n >= 25) d[@"hint"]              = [NSString stringWithFormat:@"0x%02X", v[24]];
     return d;
 }
 
@@ -159,13 +191,29 @@ static NSDictionary *_DecodeAirPlayTarget(const uint8_t *v, NSUInteger n) {
     return d;
 }
 
+static NSString *_CellServiceLabel(uint8_t v) {
+    switch (v) {
+        case 0: return @"none";
+        case 1: return @"GPRS";
+        case 2: return @"3G";
+        case 3: return @"LTE";
+        case 4: return @"5G NSA";
+        case 5: return @"5G SA";
+        default: return [NSString stringWithFormat:@"0x%02X", v];
+    }
+}
+
 static NSDictionary *_DecodeTetheringTarget(const uint8_t *v, NSUInteger n) {
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     d[@"raw"] = _HexFromBytes(v, n);
-    if (n >= 1) d[@"battery_percent"] = @(v[0]);
+    if (n >= 1) d[@"battery_percent"] = [NSString stringWithFormat:@"%u%%", MIN(v[0], 100)];
     if (n >= 3) {
-        d[@"cell_service_type"] = @(v[1]);
-        d[@"cell_bars"]         = @(v[2]);
+        d[@"cell_service"] = _CellServiceLabel(v[1]);
+        d[@"cell_bars"]    = @(MIN(v[2], 4));
+    }
+    if (n >= 5) {
+        uint16_t kb = ((uint16_t)v[3] << 8) | v[4];
+        d[@"bytes_available_kb"] = @(kb);
     }
     return d;
 }
