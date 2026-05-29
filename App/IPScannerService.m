@@ -122,8 +122,14 @@ static const NSTimeInterval kScanIdle   = 2.0;
 
 - (void)_openScanWindow {
     if (self.scanWindowOpen) return;
+    // AllowDuplicates=YES: every advert callback is delivered, so we see
+    // every Continuity TLV update (lock-state flip, AirPods battery tick,
+    // AirDrop sheet open) instead of one snapshot per device per window.
+    // The duty cycle below still bounds radio time, so coexistence stays
+    // healthy; the per-device record cap + store notify throttle keep the
+    // main thread quiet.
     [self.central scanForPeripheralsWithServices:nil options:@{
-        CBCentralManagerScanOptionAllowDuplicatesKey: @NO,
+        CBCentralManagerScanOptionAllowDuplicatesKey: @YES,
     }];
     self.scanWindowOpen = YES;
     _isScanning = YES;
