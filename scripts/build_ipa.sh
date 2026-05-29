@@ -45,6 +45,16 @@ if [[ ! -f "$STAGE/Payload/iprox.app/Info.plist" ]]; then
   cp App/Info.plist "$STAGE/Payload/iprox.app/Info.plist"
 fi
 
+# App icons live in App/Resources/ — copy them flat into the bundle so the
+# CFBundleIcons keys in Info.plist resolve. Generated via scripts/make_icon.py.
+if [[ -d App/Resources ]]; then
+  shopt -s nullglob
+  for png in App/Resources/*.png; do
+    cp "$png" "$STAGE/Payload/iprox.app/$(basename "$png")"
+  done
+  shopt -u nullglob
+fi
+
 # PkgInfo
 printf 'APPL????' > "$STAGE/Payload/iprox.app/PkgInfo"
 

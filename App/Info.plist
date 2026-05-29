@@ -45,9 +45,22 @@
     <string>UIStatusBarStyleDefault</string>
     <key>NSBluetoothAlwaysUsageDescription</key>
     <string>iProx scans nearby Apple Continuity Bluetooth advertisements for OSINT research.</string>
-    <key>NSBluetoothPeripheralUsageDescription</key>
-    <string>iProx may advertise crafted Continuity payloads in research mode (default off).</string>
     <key>UIApplicationSupportsIndirectInputEvents</key>
     <true/>
+    <key>CFBundleIcons</key>
+    <dict>
+        <key>CFBundlePrimaryIcon</key>
+        <dict>
+            <key>CFBundleIconFiles</key>
+            <array>
+                <string>AppIcon60x60</string>
+                <string>AppIcon40x40</string>
+                <string>AppIcon29x29</string>
+                <string>AppIcon20x20</string>
+            </array>
+            <key>CFBundleIconName</key>
+            <string>AppIcon</string>
+        </dict>
+    </dict>
 </dict>
 </plist>
