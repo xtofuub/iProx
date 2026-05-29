@@ -6,6 +6,7 @@ NS_ASSUME_NONNULL_BEGIN
 @interface IPDeviceEntry : NSObject
 
 @property (nonatomic, copy) NSString *identifier;       // CBPeripheral.identifier UUID
+@property (nonatomic, assign) BOOL tagged;              // user marked "mine"
 @property (nonatomic, copy, nullable) NSString *peripheralName;
 @property (nonatomic, copy, nullable) NSString *advLocalName;
 @property (nonatomic, copy, nullable) NSNumber *txPower;

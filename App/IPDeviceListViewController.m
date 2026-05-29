@@ -11,6 +11,7 @@
 @property (nonatomic, strong) UILabel *statusLabel;
 @property (nonatomic, strong) UIView *emptyView;
 @property (nonatomic, strong) NSTimer *refreshTimer;
+@property (nonatomic, assign) BOOL hideTagged;
 @end
 
 @implementation IPDeviceListViewController
@@ -25,6 +26,11 @@
                                          style:UIBarButtonItemStylePlain
                                         target:self
                                         action:@selector(_clear)];
+    self.navigationItem.leftBarButtonItem =
+        [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"line.3.horizontal.decrease.circle"]
+                                         style:UIBarButtonItemStylePlain
+                                        target:self
+                                        action:@selector(_toggleHideTagged)];
 
     self.statusLabel = [[UILabel alloc] init];
     self.statusLabel.font = [UIFont monospacedSystemFontOfSize:11 weight:UIFontWeightRegular];
@@ -123,15 +129,37 @@
 - (void)_scannerStateChanged { [self _refresh]; }
 
 - (void)_refresh {
-    self.entries = [[IPDeviceStore shared] snapshotSortedByRecency];
+    NSArray *all = [[IPDeviceStore shared] snapshotSortedByRecency];
+    NSUInteger taggedCount = 0;
+    if (self.hideTagged) {
+        NSMutableArray *filt = [NSMutableArray arrayWithCapacity:all.count];
+        for (IPDeviceEntry *e in all) {
+            if (e.tagged) { taggedCount++; continue; }
+            [filt addObject:e];
+        }
+        self.entries = filt;
+    } else {
+        self.entries = all;
+        for (IPDeviceEntry *e in all) if (e.tagged) taggedCount++;
+    }
     IPScannerService *s = [IPScannerService shared];
-    NSString *line = [NSString stringWithFormat:@"%@  •  %lu devices  •  %lu adverts",
+    NSString *filtTag = self.hideTagged ? [NSString stringWithFormat:@"  •  %lu hidden", (unsigned long)taggedCount] : @"";
+    NSString *line = [NSString stringWithFormat:@"%@  •  %lu devices  •  %lu adverts%@",
                       s.bluetoothStateDescription,
                       (unsigned long)self.entries.count,
-                      (unsigned long)[IPDeviceStore shared].totalAppleRecordCount];
+                      (unsigned long)[IPDeviceStore shared].totalAppleRecordCount,
+                      filtTag];
     self.statusLabel.text = line;
     self.emptyView.hidden = self.entries.count > 0;
     [self.tableView reloadData];
+}
+
+- (void)_toggleHideTagged {
+    self.hideTagged = !self.hideTagged;
+    NSString *icon = self.hideTagged ? @"line.3.horizontal.decrease.circle.fill"
+                                     : @"line.3.horizontal.decrease.circle";
+    self.navigationItem.leftBarButtonItem.image = [UIImage systemImageNamed:icon];
+    [self _refresh];
 }
 
 - (void)_clear {
@@ -162,6 +190,24 @@
     IPDeviceDetailViewController *vc = [[IPDeviceDetailViewController alloc] init];
     vc.entry = self.entries[ip.row];
     [self.navigationController pushViewController:vc animated:YES];
+}
+
+- (UISwipeActionsConfiguration *)tableView:(UITableView *)tv
+trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)ip {
+    if (ip.row >= self.entries.count) return nil;
+    IPDeviceEntry *e = self.entries[ip.row];
+    NSString *title = e.tagged ? @"Untag" : @"Tag as Mine";
+    UIContextualAction *act = [UIContextualAction
+        contextualActionWithStyle:UIContextualActionStyleNormal
+        title:title
+        handler:^(UIContextualAction *a, UIView *v, void (^done)(BOOL)) {
+            [[IPDeviceStore shared] toggleTagForIdentifier:e.identifier];
+            done(YES);
+        }];
+    act.backgroundColor = e.tagged ? [UIColor systemGrayColor] : [UIColor systemOrangeColor];
+    act.image = [UIImage systemImageNamed:e.tagged ? @"person.crop.circle.badge.xmark"
+                                                   : @"person.crop.circle.badge.checkmark"];
+    return [UISwipeActionsConfiguration configurationWithActions:@[act]];
 }
 
 @end

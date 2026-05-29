@@ -16,6 +16,7 @@
 - (instancetype)snapshotCopy {
     IPDeviceEntry *c = [[IPDeviceEntry alloc] init];
     c.identifier      = self.identifier;
+    c.tagged          = self.tagged;
     c.peripheralName  = self.peripheralName;
     c.advLocalName    = self.advLocalName;
     c.txPower         = self.txPower;

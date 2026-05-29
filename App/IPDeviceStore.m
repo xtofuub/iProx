@@ -2,11 +2,14 @@
 
 NSNotificationName const IPDeviceStoreDidChangeNotification = @"IPDeviceStoreDidChangeNotification";
 
+static NSString * const kTaggedDefaultsKey = @"iprox.tagged_identifiers";
+
 @interface IPDeviceStore ()
 @property (nonatomic, strong) NSMutableDictionary<NSString *, IPDeviceEntry *> *devicesByID;
 @property (nonatomic, strong) dispatch_queue_t lock;
 @property (nonatomic, assign) NSTimeInterval lastNotifyTime;   // touched on lock queue
 @property (nonatomic, assign) BOOL notifyScheduled;            // touched on lock queue
+@property (nonatomic, strong) NSMutableSet<NSString *> *tagsMutable;
 @end
 
 @implementation IPDeviceStore
@@ -22,8 +25,48 @@ NSNotificationName const IPDeviceStoreDidChangeNotification = @"IPDeviceStoreDid
     if ((self = [super init])) {
         _devicesByID = [NSMutableDictionary dictionary];
         _lock = dispatch_queue_create("com.iprox.store", DISPATCH_QUEUE_SERIAL);
+        NSArray *stored = [[NSUserDefaults standardUserDefaults] arrayForKey:kTaggedDefaultsKey];
+        _tagsMutable = [NSMutableSet setWithArray:stored ?: @[]];
     }
     return self;
+}
+
+- (NSSet<NSString *> *)taggedIdentifiers {
+    __block NSSet *out = nil;
+    dispatch_sync(self.lock, ^{ out = [self.tagsMutable copy]; });
+    return out;
+}
+
+- (BOOL)isTagged:(NSString *)identifier {
+    if (identifier.length == 0) return NO;
+    __block BOOL t = NO;
+    dispatch_sync(self.lock, ^{ t = [self.tagsMutable containsObject:identifier]; });
+    return t;
+}
+
+- (void)toggleTagForIdentifier:(NSString *)identifier {
+    if (identifier.length == 0) return;
+    dispatch_async(self.lock, ^{
+        if ([self.tagsMutable containsObject:identifier]) {
+            [self.tagsMutable removeObject:identifier];
+        } else {
+            [self.tagsMutable addObject:identifier];
+        }
+        IPDeviceEntry *entry = self.devicesByID[identifier];
+        if (entry) entry.tagged = [self.tagsMutable containsObject:identifier];
+        [[NSUserDefaults standardUserDefaults] setObject:[self.tagsMutable allObjects]
+                                                  forKey:kTaggedDefaultsKey];
+        [self _emitChange];
+    });
+}
+
+- (void)clearAllTags {
+    dispatch_async(self.lock, ^{
+        [self.tagsMutable removeAllObjects];
+        for (IPDeviceEntry *e in self.devicesByID.allValues) e.tagged = NO;
+        [[NSUserDefaults standardUserDefaults] removeObjectForKey:kTaggedDefaultsKey];
+        [self _emitChange];
+    });
 }
 
 - (void)ingestRecords:(NSArray<IPContinuityRecord *> *)records
@@ -36,6 +79,7 @@ NSNotificationName const IPDeviceStoreDidChangeNotification = @"IPDeviceStoreDid
         if (!entry) {
             entry = [[IPDeviceEntry alloc] init];
             entry.identifier = identifier;
+            entry.tagged = [self.tagsMutable containsObject:identifier];
             self.devicesByID[identifier] = entry;
         }
         entry.lastRSSI = rssi;

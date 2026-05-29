@@ -136,6 +136,11 @@
     NSString *cat  = [entry inferredDeviceCategory];
     NSString *name = [entry bestDisplayName];
     self.iconView.image = [self _iconForCategory:cat];
+    self.iconView.tintColor = entry.tagged ? [UIColor systemOrangeColor]
+                                           : [UIColor systemPurpleColor];
+    self.contentView.backgroundColor = entry.tagged
+        ? [[UIColor systemOrangeColor] colorWithAlphaComponent:0.08]
+        : [UIColor clearColor];
 
     // If we got a real device name, lead with it and use the category as the
     // first line of the subtitle. Otherwise the category itself is the title.
@@ -156,6 +161,10 @@
     for (UIView *v in [self.badgesStack.arrangedSubviews copy]) {
         [self.badgesStack removeArrangedSubview:v];
         [v removeFromSuperview];
+    }
+    if (entry.tagged) {
+        [self.badgesStack addArrangedSubview:[self _badgeLabel:@"MINE"
+                                                            bg:[UIColor systemOrangeColor]]];
     }
     for (NSString *b in [entry activeBadges]) {
         UIColor *bg = [UIColor systemBlueColor];
