@@ -170,6 +170,53 @@ static NSDictionary *_DecodeTetheringTarget(const uint8_t *v, NSUInteger n) {
     return d;
 }
 
+static NSDictionary *_DecodeHeySiri(const uint8_t *v, NSUInteger n) {
+    // HeySiri (0x08) — random perceptual hash, signal class + level, confidence.
+    NSMutableDictionary *d = [NSMutableDictionary dictionary];
+    d[@"raw"] = _HexFromBytes(v, n);
+    if (n >= 2) d[@"perceptual_hash"] = _HexFromBytes(v, 2);
+    if (n >= 3) {
+        static NSString *classes[] = { @"none", @"loud", @"normal", @"quiet" };
+        uint8_t c = v[2];
+        d[@"signal_class"] = c < 4 ? classes[c] : [NSString stringWithFormat:@"0x%02X", c];
+    }
+    if (n >= 4) d[@"signal_level"] = @(v[3]);
+    if (n >= 5) d[@"flags"] = [NSString stringWithFormat:@"0x%02X", v[4]];
+    return d;
+}
+
+static NSDictionary *_DecodeMagicSwitch(const uint8_t *v, NSUInteger n) {
+    // MagicSwitch (0x0A) — confidence ID + on/off-ish state byte.
+    NSMutableDictionary *d = [NSMutableDictionary dictionary];
+    d[@"raw"] = _HexFromBytes(v, n);
+    if (n >= 2) d[@"confidence_id"] = _HexFromBytes(v, 2);
+    if (n >= 3) d[@"state"] = [NSString stringWithFormat:@"0x%02X", v[2]];
+    return d;
+}
+
+static NSDictionary *_DecodeWatchConnection(const uint8_t *v, NSUInteger n) {
+    // WatchConnection (0x0B) — Apple Watch nearby/paired state byte.
+    NSMutableDictionary *d = [NSMutableDictionary dictionary];
+    d[@"raw"] = _HexFromBytes(v, n);
+    if (n >= 1) {
+        uint8_t s = v[0];
+        d[@"state_byte"] = [NSString stringWithFormat:@"0x%02X", s];
+        d[@"watch_locked"]   = @((s & 0x01) != 0);
+        d[@"watch_active"]   = @((s & 0x02) != 0);
+        d[@"watch_charging"] = @((s & 0x04) != 0);
+    }
+    return d;
+}
+
+static NSDictionary *_DecodeTetheringSource(const uint8_t *v, NSUInteger n) {
+    // TetheringSource (0x0E) — advertised by Mac/iPad offering Personal Hotspot.
+    NSMutableDictionary *d = [NSMutableDictionary dictionary];
+    d[@"raw"] = _HexFromBytes(v, n);
+    if (n >= 1) d[@"version"] = [NSString stringWithFormat:@"0x%02X", v[0]];
+    if (n >= 6) d[@"flags"] = _HexFromBytes(v + 1, 5);
+    return d;
+}
+
 static NSDictionary *_DecodeRaw(const uint8_t *v, NSUInteger n) {
     return @{ @"raw": _HexFromBytes(v, n) };
 }
@@ -204,9 +251,13 @@ static NSDictionary *_DecodeRaw(const uint8_t *v, NSUInteger n) {
         switch (t) {
             case IPContinuityTypeAirDrop:           fields = _DecodeAirDrop(v, l); break;
             case IPContinuityTypeProximityPairing:  fields = _DecodeProximityPairing(v, l); break;
+            case IPContinuityTypeHeySiri:           fields = _DecodeHeySiri(v, l); break;
             case IPContinuityTypeAirPlayTarget:     fields = _DecodeAirPlayTarget(v, l); break;
+            case IPContinuityTypeMagicSwitch:       fields = _DecodeMagicSwitch(v, l); break;
+            case IPContinuityTypeWatchConnection:   fields = _DecodeWatchConnection(v, l); break;
             case IPContinuityTypeHandoff:           fields = _DecodeHandoff(v, l); break;
             case IPContinuityTypeTetheringTarget:   fields = _DecodeTetheringTarget(v, l); break;
+            case IPContinuityTypeTetheringSource:   fields = _DecodeTetheringSource(v, l); break;
             case IPContinuityTypeNearbyAction:      fields = _DecodeNearbyAction(v, l); break;
             case IPContinuityTypeNearbyInfo:        fields = _DecodeNearbyInfo(v, l); break;
             case IPContinuityTypeFindMy:            fields = _DecodeFindMy(v, l); break;
