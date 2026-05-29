@@ -54,11 +54,28 @@
     return @(d);
 }
 
+// Badges and the model label use "fresh" lookups: if the latest record of
+// that type is older than this window, treat it as gone. Lets stale state
+// (AirDrop bit, AirPods-connected bit, lock bit) decay naturally instead of
+// pinning to whatever the last advert said an hour ago.
+static const NSTimeInterval kRecordFreshSeconds = 25.0;
+
 - (IPContinuityRecord *)_latestRecordOfType:(IPContinuityType)type {
     // Walk backwards for most recent of that type.
     for (NSInteger i = self.records.count - 1; i >= 0; i--) {
         IPContinuityRecord *r = self.records[i];
         if (r.type == type) return r;
+    }
+    return nil;
+}
+
+- (IPContinuityRecord *)_latestFreshRecordOfType:(IPContinuityType)type {
+    NSDate *now = [NSDate date];
+    for (NSInteger i = self.records.count - 1; i >= 0; i--) {
+        IPContinuityRecord *r = self.records[i];
+        if (r.type != type) continue;
+        if ([now timeIntervalSinceDate:r.timestamp] > kRecordFreshSeconds) return nil;
+        return r;
     }
     return nil;
 }
@@ -75,7 +92,7 @@
 }
 
 - (NSString *)inferredModelLabel {
-    IPContinuityRecord *pp = [self _latestRecordOfType:IPContinuityTypeProximityPairing];
+    IPContinuityRecord *pp = [self _latestFreshRecordOfType:IPContinuityTypeProximityPairing];
     if (pp) {
         NSString *model = pp.fields[@"model"];
         NSString *bL = pp.fields[@"battery_left"]  ?: @"?";
@@ -96,7 +113,7 @@
             return s;
         }
     }
-    IPContinuityRecord *wc = [self _latestRecordOfType:IPContinuityTypeWatchConnection];
+    IPContinuityRecord *wc = [self _latestFreshRecordOfType:IPContinuityTypeWatchConnection];
     if (wc) {
         BOOL locked   = [wc.fields[@"watch_locked"] boolValue];
         BOOL active   = [wc.fields[@"watch_active"] boolValue];
@@ -106,23 +123,23 @@
                 active   ? @"active "   : @"idle ",
                 charging ? @"charging" : @""];
     }
-    IPContinuityRecord *ni = [self _latestRecordOfType:IPContinuityTypeNearbyInfo];
+    IPContinuityRecord *ni = [self _latestFreshRecordOfType:IPContinuityTypeNearbyInfo];
     if (ni) {
         NSString *lock = ni.fields[@"lock_state"] ?: @"?";
         NSNumber *act = ni.fields[@"activity_level"];
         return [NSString stringWithFormat:@"%@  activity=%@", lock, act ?: @"?"];
     }
-    IPContinuityRecord *ap = [self _latestRecordOfType:IPContinuityTypeAirPlayTarget];
+    IPContinuityRecord *ap = [self _latestFreshRecordOfType:IPContinuityTypeAirPlayTarget];
     if (ap) {
         NSString *ip = ap.fields[@"ipv4"];
         if (ip) return [NSString stringWithFormat:@"AirPlay  %@", ip];
     }
-    IPContinuityRecord *na = [self _latestRecordOfType:IPContinuityTypeNearbyAction];
+    IPContinuityRecord *na = [self _latestFreshRecordOfType:IPContinuityTypeNearbyAction];
     if (na) {
         NSString *name = na.fields[@"action_name"];
         if (name) return [NSString stringWithFormat:@"action: %@", name];
     }
-    IPContinuityRecord *tt = [self _latestRecordOfType:IPContinuityTypeTetheringTarget];
+    IPContinuityRecord *tt = [self _latestFreshRecordOfType:IPContinuityTypeTetheringTarget];
     if (tt) {
         NSString *batt = tt.fields[@"battery_percent"] ?: @"?";
         NSString *cell = tt.fields[@"cell_service"]    ?: @"?";
@@ -130,7 +147,7 @@
         return [NSString stringWithFormat:@"Tether  batt=%@  %@ %@bars",
                 batt, cell, bars ?: @"?"];
     }
-    IPContinuityRecord *fm = [self _latestRecordOfType:IPContinuityTypeFindMy];
+    IPContinuityRecord *fm = [self _latestFreshRecordOfType:IPContinuityTypeFindMy];
     if (fm) {
         id batt = fm.fields[@"battery_state"];
         BOOL lost = [fm.fields[@"lost_mode"] boolValue];
@@ -140,7 +157,7 @@
                 oas  ? @"  owner-nearby" : @"  separated",
                 lost ? @"  LOST" : @""];
     }
-    IPContinuityRecord *ad = [self _latestRecordOfType:IPContinuityTypeAirDrop];
+    IPContinuityRecord *ad = [self _latestFreshRecordOfType:IPContinuityTypeAirDrop];
     if (ad) {
         NSString *phone = ad.fields[@"phone_hash"];
         NSString *email = ad.fields[@"email_hash"];
@@ -162,20 +179,20 @@
 
 - (NSArray<NSString *> *)activeBadges {
     NSMutableArray *out = [NSMutableArray array];
-    IPContinuityRecord *ni = [self _latestRecordOfType:IPContinuityTypeNearbyInfo];
+    IPContinuityRecord *ni = [self _latestFreshRecordOfType:IPContinuityTypeNearbyInfo];
     if (ni) {
-        if ([ni.fields[@"airdrop_receiver"] boolValue]) [out addObject:@"AirDrop"];
+        if ([ni.fields[@"airdrop_receiver"]  boolValue]) [out addObject:@"AirDrop"];
         if ([ni.fields[@"airpods_connected"] boolValue]) [out addObject:@"AirPods"];
-        if ([ni.fields[@"primary_icloud"] boolValue]) [out addObject:@"iCloud"];
+        if ([ni.fields[@"primary_icloud"]    boolValue]) [out addObject:@"iCloud"];
         NSString *lock = ni.fields[@"lock_state"];
         if ([lock isEqualToString:@"locked"]) [out addObject:@"Lock"];
     }
-    if ([self _latestRecordOfType:IPContinuityTypeHandoff])          [out addObject:@"Handoff"];
-    if ([self _latestRecordOfType:IPContinuityTypeFindMy])           [out addObject:@"FindMy"];
-    if ([self _latestRecordOfType:IPContinuityTypeHeySiri])          [out addObject:@"Siri"];
-    if ([self _latestRecordOfType:IPContinuityTypeTetheringSource])  [out addObject:@"Hotspot"];
-    if ([self _latestRecordOfType:IPContinuityTypeTetheringTarget])  [out addObject:@"Tether"];
-    if ([self _latestRecordOfType:IPContinuityTypeNearbyAction])     [out addObject:@"Action"];
+    if ([self _latestFreshRecordOfType:IPContinuityTypeHandoff])          [out addObject:@"Handoff"];
+    if ([self _latestFreshRecordOfType:IPContinuityTypeFindMy])           [out addObject:@"FindMy"];
+    if ([self _latestFreshRecordOfType:IPContinuityTypeHeySiri])          [out addObject:@"Siri"];
+    if ([self _latestFreshRecordOfType:IPContinuityTypeTetheringSource])  [out addObject:@"Hotspot"];
+    if ([self _latestFreshRecordOfType:IPContinuityTypeTetheringTarget])  [out addObject:@"Tether"];
+    if ([self _latestFreshRecordOfType:IPContinuityTypeNearbyAction])     [out addObject:@"Action"];
     return out;
 }
 
