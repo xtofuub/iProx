@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 """
-Generate iProx app icons. Pure stdlib PNG encoder (zlib + struct), so the
-repo clones and builds without Pillow / ImageMagick.
+iProx app icon, visionOS-style frosted-glass tile.
 
-Design: minimal. Solid deep-purple field, two thin white concentric rings,
-one filled centre dot. No gradients, no sweeps, no gloss. Reads as 'target'
-at 40 px and stays clean at 1024.
+Pure stdlib PNG encoder (zlib + struct) so the repo stays clone-and-build
+without Pillow / ImageMagick.
+
+Design notes:
+  - pale lavender base gradient (lighter top, deeper purple bottom)
+  - bright thin specular highlight along the top edge
+  - faint left-edge light catch
+  - subtle inner shadow at the bottom + bottom-right corner vignette
+  - saturated deep-violet radar glyph (two thin rings + centre dot) floating
+    on top, with a soft drop shadow so it reads as 'on glass'
+  - cyan core inside the centre dot for accent
 """
 
 import math
@@ -26,9 +33,18 @@ ICON_SET = [
 ]
 MARKETING_SIZE = 1024
 
-BG_COLOR    = (38, 22, 92)     # solid deep purple, no gradient
-RING_COLOR  = (255, 255, 255)
+# Glass tile palette — pale lavender at top, deeper violet at bottom, with a
+# soft warm tint baked in so it doesn't read as flat grey.
+BG_TOP   = (236, 228, 250)
+BG_MID   = (203, 184, 234)
+BG_BOT   = (160, 132, 208)
 
+# Glyph palette — saturated deep purple so it pops on the pale glass.
+GLYPH    = (62,  22,  140)
+CORE     = (96,  220, 255)
+
+
+# ── PNG ────────────────────────────────────────────────────────────────────
 
 def png_encode(width, height, rgb):
     def chunk(t, d):
@@ -57,12 +73,84 @@ def _blend(buf, size, x, y, color, cov):
     buf[idx + 2] = int(buf[idx + 2] * inv + color[2] * cov)
 
 
-def solid(size, color):
-    row = bytes(color) * size
-    return bytearray(row * size)
+# ── Background gradient (3-stop, soft) ─────────────────────────────────────
+
+def glass_bg(size):
+    """3-stop vertical gradient: top -> mid (at 55%) -> bot. Easing on each leg
+    gives the frosted-glass feel rather than a flat ramp."""
+    buf = bytearray(size * size * 3)
+    mid_y = 0.55
+    for y in range(size):
+        t = y / max(1, size - 1)
+        if t < mid_y:
+            u = (t / mid_y) ** 0.85
+            r = int(BG_TOP[0] + (BG_MID[0] - BG_TOP[0]) * u)
+            g = int(BG_TOP[1] + (BG_MID[1] - BG_TOP[1]) * u)
+            b = int(BG_TOP[2] + (BG_MID[2] - BG_TOP[2]) * u)
+        else:
+            u = ((t - mid_y) / (1.0 - mid_y)) ** 1.15
+            r = int(BG_MID[0] + (BG_BOT[0] - BG_MID[0]) * u)
+            g = int(BG_MID[1] + (BG_BOT[1] - BG_MID[1]) * u)
+            b = int(BG_MID[2] + (BG_BOT[2] - BG_MID[2]) * u)
+        row = bytes((r, g, b)) * size
+        buf[y * size * 3:(y + 1) * size * 3] = row
+    return buf
 
 
-def aa_ring(buf, size, cx, cy, radius, stroke, color):
+# ── Edge effects ───────────────────────────────────────────────────────────
+
+def top_specular(buf, size):
+    """Crisp bright line along the very top, fading downward. Reads as the
+    light catching on the upper rim of a glass slab."""
+    band_h = max(2, int(size * 0.06))
+    for y in range(band_h):
+        t = 1.0 - y / band_h
+        alpha = (t ** 2) * 0.85
+        if alpha <= 0:
+            continue
+        for x in range(size):
+            _blend(buf, size, x, y, (255, 255, 255), alpha)
+
+
+def left_edge_light(buf, size):
+    band_w = max(2, int(size * 0.05))
+    for x in range(band_w):
+        t = 1.0 - x / band_w
+        alpha = (t ** 2) * 0.22
+        if alpha <= 0:
+            continue
+        for y in range(int(size * 0.05), int(size * 0.85)):
+            _blend(buf, size, x, y, (255, 255, 255), alpha)
+
+
+def bottom_inner_shadow(buf, size):
+    band_h = max(2, int(size * 0.18))
+    for y in range(size - band_h, size):
+        t = (y - (size - band_h)) / band_h
+        alpha = (t ** 2) * 0.18
+        for x in range(size):
+            _blend(buf, size, x, y, (40, 18, 70), alpha)
+
+
+def corner_vignette(buf, size):
+    """Bottom-right corner darken. Adds depth."""
+    cx, cy = size, size
+    radius = size * 0.85
+    for y in range(int(size * 0.45), size):
+        dy2 = (y - cy) ** 2
+        for x in range(int(size * 0.45), size):
+            d = math.sqrt((x - cx) ** 2 + dy2)
+            if d >= radius:
+                continue
+            t = 1.0 - d / radius
+            alpha = (t ** 3) * 0.20
+            if alpha > 0:
+                _blend(buf, size, x, y, (40, 18, 70), alpha)
+
+
+# ── Glyph (rings + dot) ────────────────────────────────────────────────────
+
+def aa_ring(buf, size, cx, cy, radius, stroke, color, alpha=1.0):
     half = stroke / 2.0
     inner = radius - half
     outer = radius + half
@@ -82,10 +170,10 @@ def aa_ring(buf, size, cx, cy, radius, stroke, color):
                 cov = max(0.0, 1.0 - (inner - d))
             else:
                 cov = max(0.0, 1.0 - (d - outer))
-            _blend(buf, size, x, y, color, cov)
+            _blend(buf, size, x, y, color, cov * alpha)
 
 
-def aa_disc(buf, size, cx, cy, radius, color):
+def aa_disc(buf, size, cx, cy, radius, color, alpha=1.0):
     x0 = max(0, int(cx - radius - 2))
     x1 = min(size, int(cx + radius + 3))
     y0 = max(0, int(cy - radius - 2))
@@ -96,22 +184,48 @@ def aa_disc(buf, size, cx, cy, radius, color):
             d = math.sqrt((x - cx) ** 2 + dy2)
             if d > radius + 1:
                 continue
-            cov = max(0.0, min(1.0, radius - d + 0.5))
-            _blend(buf, size, x, y, color, cov)
+            cov = max(0.0, min(1.0, radius - d + 0.5)) * alpha
+            if cov > 0:
+                _blend(buf, size, x, y, color, cov)
 
 
-def make_icon(size):
-    buf = solid(size, BG_COLOR)
+def glyph_drop_shadow_ring(buf, size, cx, cy, radius, stroke, offset, alpha):
+    """Soft offset shadow for the rings — gives the glyph a 'sitting on
+    glass' feel. Just a darker semi-transparent ring shifted down by offset."""
+    aa_ring(buf, size, cx, cy + offset, radius, stroke * 1.4,
+            (38, 16, 72), alpha=alpha)
+
+
+def render_glyph(buf, size):
     cx = cy = (size - 1) / 2.0
 
-    # Stroke scales so the rings stay readable at 40 px but don't get heavy
-    # at 1024. Two rings: outer at 0.41 of size, inner at 0.22.
-    stroke_outer = max(1.5, size / 30.0)
-    stroke_inner = max(1.2, size / 38.0)
-    aa_ring(buf, size, cx, cy, size * 0.41, stroke_outer, RING_COLOR)
-    aa_ring(buf, size, cx, cy, size * 0.22, stroke_inner, RING_COLOR)
-    aa_disc(buf, size, cx, cy, max(2.0, size / 18.0), RING_COLOR)
+    stroke_outer = max(1.6, size / 26.0)
+    stroke_inner = max(1.4, size / 34.0)
+    radius_outer = size * 0.40
+    radius_inner = size * 0.22
 
+    # Drop shadows for both rings + the centre dot — small, soft, downward.
+    drop = max(1.0, size / 60.0)
+    glyph_drop_shadow_ring(buf, size, cx, cy, radius_outer, stroke_outer, drop, 0.22)
+    glyph_drop_shadow_ring(buf, size, cx, cy, radius_inner, stroke_inner, drop, 0.18)
+    aa_disc(buf, size, cx, cy + drop, max(2.0, size / 16.0), (38, 16, 72), alpha=0.18)
+
+    # Real glyph layer.
+    aa_ring(buf, size, cx, cy, radius_outer, stroke_outer, GLYPH)
+    aa_ring(buf, size, cx, cy, radius_inner, stroke_inner, GLYPH)
+    aa_disc(buf, size, cx, cy, max(2.0, size / 16.0), GLYPH)
+    aa_disc(buf, size, cx, cy, max(1.0, size / 32.0), CORE)
+
+
+# ── Compose ────────────────────────────────────────────────────────────────
+
+def make_icon(size):
+    buf = glass_bg(size)
+    bottom_inner_shadow(buf, size)
+    corner_vignette(buf, size)
+    render_glyph(buf, size)
+    left_edge_light(buf, size)
+    top_specular(buf, size)
     return png_encode(size, size, buf)
 
 
