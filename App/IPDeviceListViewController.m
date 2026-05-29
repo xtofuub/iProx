@@ -5,10 +5,13 @@
 #import "IPScannerService.h"
 #import "IPDeviceDetailViewController.h"
 
+static NSString * const kInfoBannerDismissedKey = @"iprox.info_banner_dismissed_v1";
+
 @interface IPDeviceListViewController () <UITableViewDataSource, UITableViewDelegate>
 @property (nonatomic, strong) UITableView *tableView;
 @property (nonatomic, strong) NSArray<IPDeviceEntry *> *entries;
 @property (nonatomic, strong) UILabel *statusLabel;
+@property (nonatomic, strong) UIView *infoBanner;
 @property (nonatomic, strong) UIView *emptyView;
 @property (nonatomic, strong) NSTimer *refreshTimer;
 @property (nonatomic, assign) BOOL hideTagged;
@@ -39,6 +42,13 @@
     self.statusLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:self.statusLabel];
 
+    BOOL bannerDismissed = [[NSUserDefaults standardUserDefaults] boolForKey:kInfoBannerDismissedKey];
+    self.infoBanner = bannerDismissed ? nil : [self _buildInfoBanner];
+    if (self.infoBanner) {
+        self.infoBanner.translatesAutoresizingMaskIntoConstraints = NO;
+        [self.view addSubview:self.infoBanner];
+    }
+
     self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
     self.tableView.dataSource = self;
     self.tableView.delegate = self;
@@ -53,12 +63,13 @@
     [self.view addSubview:self.emptyView];
 
     UILayoutGuide *g = self.view.safeAreaLayoutGuide;
-    [NSLayoutConstraint activateConstraints:@[
+    UIView *aboveTable = self.infoBanner ?: (UIView *)self.statusLabel;
+    NSMutableArray *cons = [NSMutableArray arrayWithArray:@[
         [self.statusLabel.topAnchor constraintEqualToAnchor:g.topAnchor],
         [self.statusLabel.leadingAnchor constraintEqualToAnchor:g.leadingAnchor constant:12],
         [self.statusLabel.trailingAnchor constraintEqualToAnchor:g.trailingAnchor constant:-12],
 
-        [self.tableView.topAnchor constraintEqualToAnchor:self.statusLabel.bottomAnchor constant:4],
+        [self.tableView.topAnchor constraintEqualToAnchor:aboveTable.bottomAnchor constant:4],
         [self.tableView.leadingAnchor constraintEqualToAnchor:g.leadingAnchor],
         [self.tableView.trailingAnchor constraintEqualToAnchor:g.trailingAnchor],
         [self.tableView.bottomAnchor constraintEqualToAnchor:g.bottomAnchor],
@@ -67,6 +78,14 @@
         [self.emptyView.centerYAnchor constraintEqualToAnchor:self.tableView.centerYAnchor],
         [self.emptyView.widthAnchor constraintLessThanOrEqualToAnchor:g.widthAnchor constant:-40],
     ]];
+    if (self.infoBanner) {
+        [cons addObjectsFromArray:@[
+            [self.infoBanner.topAnchor constraintEqualToAnchor:self.statusLabel.bottomAnchor constant:6],
+            [self.infoBanner.leadingAnchor constraintEqualToAnchor:g.leadingAnchor constant:12],
+            [self.infoBanner.trailingAnchor constraintEqualToAnchor:g.trailingAnchor constant:-12],
+        ]];
+    }
+    [NSLayoutConstraint activateConstraints:cons];
 
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(_storeDidChange)
@@ -92,6 +111,50 @@
     [super viewWillDisappear:animated];
     [self.refreshTimer invalidate];
     self.refreshTimer = nil;
+}
+
+- (UIView *)_buildInfoBanner {
+    UIView *card = [[UIView alloc] init];
+    card.backgroundColor = [[UIColor systemBlueColor] colorWithAlphaComponent:0.12];
+    card.layer.cornerRadius = 10;
+
+    UILabel *txt = [[UILabel alloc] init];
+    txt.text = @"iProx can't see the iPhone it's running on.\nTag your OTHER Apple devices (AirPods, Watch, Mac, second iPhone) to skip them.";
+    txt.font = [UIFont systemFontOfSize:12];
+    txt.textColor = [UIColor labelColor];
+    txt.numberOfLines = 0;
+    txt.translatesAutoresizingMaskIntoConstraints = NO;
+
+    UIButton *dismiss = [UIButton buttonWithType:UIButtonTypeSystem];
+    [dismiss setImage:[UIImage systemImageNamed:@"xmark.circle.fill"] forState:UIControlStateNormal];
+    dismiss.tintColor = [UIColor systemBlueColor];
+    dismiss.translatesAutoresizingMaskIntoConstraints = NO;
+    [dismiss addTarget:self action:@selector(_dismissInfoBanner) forControlEvents:UIControlEventTouchUpInside];
+
+    [card addSubview:txt];
+    [card addSubview:dismiss];
+    [NSLayoutConstraint activateConstraints:@[
+        [txt.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:12],
+        [txt.topAnchor constraintEqualToAnchor:card.topAnchor constant:10],
+        [txt.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-10],
+        [txt.trailingAnchor constraintEqualToAnchor:dismiss.leadingAnchor constant:-8],
+
+        [dismiss.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-8],
+        [dismiss.centerYAnchor constraintEqualToAnchor:card.centerYAnchor],
+        [dismiss.widthAnchor constraintEqualToConstant:24],
+        [dismiss.heightAnchor constraintEqualToConstant:24],
+    ]];
+    return card;
+}
+
+- (void)_dismissInfoBanner {
+    [[NSUserDefaults standardUserDefaults] setBool:YES forKey:kInfoBannerDismissedKey];
+    [UIView animateWithDuration:0.25 animations:^{
+        self.infoBanner.alpha = 0;
+    } completion:^(BOOL fin) {
+        [self.infoBanner removeFromSuperview];
+        self.infoBanner = nil;
+    }];
 }
 
 - (UIView *)_buildEmptyView {
@@ -202,6 +265,14 @@ trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)ip {
         title:title
         handler:^(UIContextualAction *a, UIView *v, void (^done)(BOOL)) {
             [[IPDeviceStore shared] toggleTagForIdentifier:e.identifier];
+            // Store ingest -> notify -> _refresh is async; flip the local
+            // snapshot in place + reload the single row so the user sees
+            // the change instantly. The next throttled refresh confirms.
+            e.tagged = !e.tagged;
+            if (ip.row < self.entries.count) {
+                [tv reloadRowsAtIndexPaths:@[ip]
+                         withRowAnimation:UITableViewRowAnimationFade];
+            }
             done(YES);
         }];
     act.backgroundColor = e.tagged ? [UIColor systemGrayColor] : [UIColor systemOrangeColor];

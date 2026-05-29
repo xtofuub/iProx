@@ -2,6 +2,7 @@
 #import "IPDeviceEntry.h"
 
 @interface IPDeviceCell ()
+@property (nonatomic, strong) UIView *accentBar;
 @property (nonatomic, strong) UIImageView *iconView;
 @property (nonatomic, strong) UILabel *titleLabel;
 @property (nonatomic, strong) UILabel *subtitleLabel;
@@ -24,6 +25,10 @@
 }
 
 - (void)_build {
+    self.accentBar = [[UIView alloc] init];
+    self.accentBar.translatesAutoresizingMaskIntoConstraints = NO;
+    self.accentBar.backgroundColor = [UIColor clearColor];
+
     self.iconView = [[UIImageView alloc] init];
     self.iconView.translatesAutoresizingMaskIntoConstraints = NO;
     self.iconView.contentMode = UIViewContentModeScaleAspectFit;
@@ -62,6 +67,7 @@
     self.seenLabel.translatesAutoresizingMaskIntoConstraints = NO;
     self.seenLabel.textAlignment = NSTextAlignmentRight;
 
+    [self.contentView addSubview:self.accentBar];
     [self.contentView addSubview:self.iconView];
     [self.contentView addSubview:self.titleLabel];
     [self.contentView addSubview:self.subtitleLabel];
@@ -72,6 +78,11 @@
 
     UILayoutGuide *g = self.contentView.layoutMarginsGuide;
     [NSLayoutConstraint activateConstraints:@[
+        [self.accentBar.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor],
+        [self.accentBar.topAnchor constraintEqualToAnchor:self.contentView.topAnchor],
+        [self.accentBar.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor],
+        [self.accentBar.widthAnchor constraintEqualToConstant:4],
+
         [self.iconView.leadingAnchor constraintEqualToAnchor:g.leadingAnchor],
         [self.iconView.centerYAnchor constraintEqualToAnchor:g.centerYAnchor],
         [self.iconView.widthAnchor constraintEqualToConstant:36],
@@ -138,8 +149,10 @@
     self.iconView.image = [self _iconForCategory:cat];
     self.iconView.tintColor = entry.tagged ? [UIColor systemOrangeColor]
                                            : [UIColor systemPurpleColor];
+    self.accentBar.backgroundColor = entry.tagged ? [UIColor systemOrangeColor]
+                                                  : [UIColor clearColor];
     self.contentView.backgroundColor = entry.tagged
-        ? [[UIColor systemOrangeColor] colorWithAlphaComponent:0.08]
+        ? [[UIColor systemOrangeColor] colorWithAlphaComponent:0.18]
         : [UIColor clearColor];
 
     // If we got a real device name, lead with it and use the category as the
