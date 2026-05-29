@@ -154,7 +154,7 @@
                      @"Company IDs seen:\n%@",
                      s.bluetoothStateDescription,
                      s.isScanning ? @"yes" : @"no",
-                     (unsigned long)[store snapshotSortedByRecency].count,
+                     (unsigned long)store.deviceCount,
                      (unsigned long)store.totalAppleRecordCount,
                      (unsigned long)s.cbCallbacks,
                      (unsigned long)s.cbWithMfrData,

@@ -1,10 +1,12 @@
 #import "IPDeviceDetailViewController.h"
 #import "IPDeviceEntry.h"
+#import "IPDeviceStore.h"
 #import "../Daemon/ContinuityRecord.h"
 
 @interface IPDeviceDetailViewController ()
 @property (nonatomic, strong) UIScrollView *scroll;
 @property (nonatomic, strong) UIStackView *stack;
+@property (nonatomic, copy) NSString *trackedIdentifier;
 @end
 
 @implementation IPDeviceDetailViewController
@@ -12,6 +14,7 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = [UIColor systemBackgroundColor];
+    self.trackedIdentifier = self.entry.identifier;
     self.title = [self.entry inferredDeviceCategory] ?: @"Device";
 
     self.scroll = [[UIScrollView alloc] init];
@@ -42,6 +45,17 @@
         [self.stack.widthAnchor constraintEqualToAnchor:self.scroll.widthAnchor],
     ]];
 
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(_storeChanged)
+                                                 name:IPDeviceStoreDidChangeNotification
+                                               object:nil];
+    [self _build];
+}
+
+- (void)_storeChanged {
+    IPDeviceEntry *fresh = [[IPDeviceStore shared] snapshotForIdentifier:self.trackedIdentifier];
+    if (!fresh) return;
+    self.entry = fresh;
     [self _build];
 }
 
@@ -80,6 +94,12 @@
 }
 
 - (void)_build {
+    // Clear any previous cards before re-rendering.
+    for (UIView *v in [self.stack.arrangedSubviews copy]) {
+        [self.stack removeArrangedSubview:v];
+        [v removeFromSuperview];
+    }
+
     IPDeviceEntry *e = self.entry;
     NSDateFormatter *df = [[NSDateFormatter alloc] init];
     df.dateStyle = NSDateFormatterShortStyle;

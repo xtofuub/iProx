@@ -11,6 +11,8 @@ extern NSNotificationName const IPDeviceStoreDidChangeNotification;
 + (instancetype)shared;
 
 - (NSArray<IPDeviceEntry *> *)snapshotSortedByRecency;
+- (nullable IPDeviceEntry *)snapshotForIdentifier:(NSString *)identifier;
+- (NSUInteger)deviceCount;
 - (void)ingestRecords:(NSArray<IPContinuityRecord *> *)records
         forIdentifier:(NSString *)identifier
                  rssi:(NSInteger)rssi;

@@ -79,6 +79,22 @@ NSNotificationName const IPDeviceStoreDidChangeNotification = @"IPDeviceStoreDid
     });
 }
 
+- (IPDeviceEntry *)snapshotForIdentifier:(NSString *)identifier {
+    if (identifier.length == 0) return nil;
+    __block IPDeviceEntry *out = nil;
+    dispatch_sync(self.lock, ^{
+        IPDeviceEntry *live = self.devicesByID[identifier];
+        if (live) out = [live snapshotCopy];
+    });
+    return out;
+}
+
+- (NSUInteger)deviceCount {
+    __block NSUInteger n = 0;
+    dispatch_sync(self.lock, ^{ n = self.devicesByID.count; });
+    return n;
+}
+
 - (NSArray<IPDeviceEntry *> *)snapshotSortedByRecency {
     __block NSArray<IPDeviceEntry *> *out = nil;
     dispatch_sync(self.lock, ^{
