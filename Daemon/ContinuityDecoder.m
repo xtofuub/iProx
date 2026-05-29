@@ -67,29 +67,55 @@ static NSString *_BatteryPercent(uint8_t nibble) {
 static NSDictionary *_DecodeProximityPairing(const uint8_t *v, NSUInteger n) {
     NSMutableDictionary *d = [NSMutableDictionary dictionary];
     d[@"raw"] = _HexFromBytes(v, n);
+    if (n >= 1) d[@"prefix"] = [NSString stringWithFormat:@"0x%02X", v[0]];
     if (n >= 3) {
         uint16_t code = ((uint16_t)v[1] << 8) | v[2];
         d[@"model_code"] = [NSString stringWithFormat:@"0x%04X", code];
         d[@"model"] = _AirPodsModel(code);
     }
+
+    // v[3] = status byte. Plaintext battery is only reliable in "setup"
+    // broadcasts (lid open, awaiting pairing UI). Once the AirPods are
+    // connected to another iPhone the payload is rotated/encrypted and
+    // v[4]/v[5] no longer decode as battery. The high bit of v[3] is the
+    // commonly-cited paired marker; setup-mode is typically 0x?? lower half.
+    BOOL plaintext = YES;
+    if (n >= 4) {
+        uint8_t st = v[3];
+        d[@"state_byte"] = [NSString stringWithFormat:@"0x%02X", st];
+        if ((st & 0x80) || st == 0x55 || st == 0x75) {
+            plaintext = NO;
+            d[@"pairing_state"] = @"paired (battery encrypted)";
+        } else {
+            d[@"pairing_state"] = @"setup (battery plaintext)";
+        }
+    }
+
     if (n >= 5) {
         uint8_t batt = v[4];
-        d[@"battery_right"] = _BatteryPercent(batt & 0x0F);
-        d[@"battery_left"]  = _BatteryPercent((batt >> 4) & 0x0F);
+        if (plaintext) {
+            d[@"battery_left"]  = _BatteryPercent((batt >> 4) & 0x0F);
+            d[@"battery_right"] = _BatteryPercent(batt & 0x0F);
+        } else {
+            d[@"battery_left"]  = @"?  (paired)";
+            d[@"battery_right"] = @"?  (paired)";
+        }
     }
     if (n >= 6) {
         uint8_t casebyte = v[5];
-        // Low nibble: case battery (0xF = unknown).
-        // Upper nibble: charging-state bit field.
-        d[@"case_battery"]   = _BatteryPercent(casebyte & 0x0F);
+        if (plaintext) {
+            d[@"case_battery"] = _BatteryPercent(casebyte & 0x0F);
+        } else {
+            d[@"case_battery"] = @"?  (paired)";
+        }
+        // Charging bits are surfaced regardless — they decode the same in
+        // both modes per public research.
         d[@"right_charging"] = @((casebyte & 0x10) != 0);
         d[@"left_charging"]  = @((casebyte & 0x20) != 0);
         d[@"case_charging"]  = @((casebyte & 0x40) != 0);
         d[@"in_case"]        = @((casebyte & 0x80) != 0);
     }
     if (n >= 7) {
-        // Byte 6 carries a lid-open counter (bits 0-2) and a device color id
-        // (bits 3-7). Useful for spotting AirPods that just opened their case.
         uint8_t b6 = v[6];
         d[@"lid_open_counter"] = @(b6 & 0x07);
         d[@"device_color_id"]  = [NSString stringWithFormat:@"0x%02X", (b6 >> 3) & 0x1F];
