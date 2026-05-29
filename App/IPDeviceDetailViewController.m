@@ -105,14 +105,37 @@
     df.dateStyle = NSDateFormatterShortStyle;
     df.timeStyle = NSDateFormatterMediumStyle;
 
-    NSString *summary = [NSString stringWithFormat:
-                         @"UUID: %@\nRSSI: %ld dBm\nFirst seen: %@\nLast seen: %@\nUpdates: %lu",
-                         e.identifier ?: @"-",
-                         (long)e.lastRSSI,
-                         [df stringFromDate:e.firstSeen],
-                         [df stringFromDate:e.lastSeen],
-                         (unsigned long)e.updateCount];
-    [self.stack addArrangedSubview:[self _card:@"Summary" body:summary]];
+    // Refresh nav title now that we may know a better name.
+    NSString *bestName = [e bestDisplayName];
+    if (bestName.length > 0) self.title = bestName;
+
+    // ── Identity card ────────────────────────────────────────────────
+    NSMutableString *idTxt = [NSMutableString string];
+    [idTxt appendFormat:@"Category: %@\n", [e inferredDeviceCategory] ?: @"-"];
+    [idTxt appendFormat:@"Model:    %@\n", [e inferredModelLabel]    ?: @"-"];
+    if (e.peripheralName.length > 0) [idTxt appendFormat:@"Name:     %@\n", e.peripheralName];
+    if (e.advLocalName.length > 0)   [idTxt appendFormat:@"Adv name: %@\n", e.advLocalName];
+    [idTxt appendFormat:@"UUID:     %@", e.identifier ?: @"-"];
+    [self.stack addArrangedSubview:[self _card:@"Identity" body:idTxt]];
+
+    // ── Radio card ──────────────────────────────────────────────────
+    NSMutableString *rad = [NSMutableString string];
+    [rad appendFormat:@"RSSI:        %ld dBm\n", (long)e.lastRSSI];
+    if (e.txPower)
+        [rad appendFormat:@"Tx power:    %@ dBm\n", e.txPower];
+    NSNumber *dist = [e estimatedDistanceMeters];
+    if (dist) [rad appendFormat:@"Distance:    ~%.1f m\n", dist.doubleValue];
+    [rad appendFormat:@"Adverts:     %lu  (%.1f/s)\n",
+        (unsigned long)e.updateCount, [e advertsPerSecond]];
+    [rad appendFormat:@"Connectable: %@\n",
+        e.isConnectable ? (e.isConnectable.boolValue ? @"yes" : @"no") : @"unknown"];
+    if (e.serviceUUIDs.count > 0) {
+        [rad appendFormat:@"Services:    %@\n",
+            [e.serviceUUIDs componentsJoinedByString:@", "]];
+    }
+    [rad appendFormat:@"First seen:  %@\n", [df stringFromDate:e.firstSeen]];
+    [rad appendFormat:@"Last seen:   %@", [df stringFromDate:e.lastSeen]];
+    [self.stack addArrangedSubview:[self _card:@"Radio" body:rad]];
 
     // Group by type — show most recent per type
     NSMutableDictionary<NSNumber *, IPContinuityRecord *> *latestByType = [NSMutableDictionary dictionary];

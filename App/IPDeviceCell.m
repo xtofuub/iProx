@@ -133,11 +133,24 @@
 }
 
 - (void)configureWithEntry:(IPDeviceEntry *)entry {
-    NSString *cat = [entry inferredDeviceCategory];
+    NSString *cat  = [entry inferredDeviceCategory];
+    NSString *name = [entry bestDisplayName];
     self.iconView.image = [self _iconForCategory:cat];
 
-    self.titleLabel.text = cat;
-    self.subtitleLabel.text = [entry inferredModelLabel];
+    // If we got a real device name, lead with it and use the category as the
+    // first line of the subtitle. Otherwise the category itself is the title.
+    NSString *model = [entry inferredModelLabel];
+    if (name.length > 0 && ![name isEqualToString:cat]) {
+        self.titleLabel.text = name;
+        if (model.length > 0 && ![model isEqualToString:@"--"]) {
+            self.subtitleLabel.text = [NSString stringWithFormat:@"%@  •  %@", cat, model];
+        } else {
+            self.subtitleLabel.text = cat;
+        }
+    } else {
+        self.titleLabel.text = cat;
+        self.subtitleLabel.text = model;
+    }
 
     // Badges
     for (UIView *v in [self.badgesStack.arrangedSubviews copy]) {

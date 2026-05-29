@@ -205,11 +205,37 @@ static const NSTimeInterval kScanIdle   = 2.0;
                     [IPContinuityDecoder decodeManufacturerData:mfr
                                                             mac:uuid
                                                            rssi:RSSI.integerValue];
-                if (records.count > 0) {
-                    [[IPDeviceStore shared] ingestRecords:records
-                                            forIdentifier:uuid
-                                                     rssi:RSSI.integerValue];
+
+                // Harvest every advert-data key we can — most devices alternate
+                // which keys they emit per advert, so we collect lazily and
+                // the store keeps the most recent non-nil value.
+                NSMutableDictionary *meta = [NSMutableDictionary dictionary];
+                if (peripheral.name.length > 0) {
+                    meta[@"peripheral_name"] = peripheral.name;
                 }
+                NSString *advName = advertisementData[CBAdvertisementDataLocalNameKey];
+                if (advName.length > 0) {
+                    meta[@"adv_local_name"] = advName;
+                }
+                NSNumber *tx = advertisementData[CBAdvertisementDataTxPowerLevelKey];
+                if (tx) meta[@"tx_power"] = tx;
+                NSNumber *con = advertisementData[CBAdvertisementDataIsConnectable];
+                if (con) meta[@"connectable"] = con;
+                NSArray *svc = advertisementData[CBAdvertisementDataServiceUUIDsKey];
+                if (svc.count > 0) {
+                    NSMutableArray *strs = [NSMutableArray arrayWithCapacity:svc.count];
+                    for (CBUUID *u in svc) {
+                        if ([u respondsToSelector:@selector(UUIDString)]) {
+                            [strs addObject:u.UUIDString];
+                        }
+                    }
+                    meta[@"services"] = strs;
+                }
+
+                [[IPDeviceStore shared] ingestRecords:records
+                                        forIdentifier:uuid
+                                                 rssi:RSSI.integerValue
+                                             metadata:meta];
             }
         }
     } @catch (NSException *e) {

@@ -1,4 +1,5 @@
 #import "IPDeviceEntry.h"
+#import <math.h>
 
 @implementation IPDeviceEntry
 
@@ -14,14 +15,42 @@
 
 - (instancetype)snapshotCopy {
     IPDeviceEntry *c = [[IPDeviceEntry alloc] init];
-    c.identifier = self.identifier;
-    c.displayName = self.displayName;
-    c.lastRSSI = self.lastRSSI;
-    c.firstSeen = self.firstSeen;
-    c.lastSeen = self.lastSeen;
-    c.updateCount = self.updateCount;
-    c.records = [NSMutableArray arrayWithArray:self.records];
+    c.identifier      = self.identifier;
+    c.peripheralName  = self.peripheralName;
+    c.advLocalName    = self.advLocalName;
+    c.txPower         = self.txPower;
+    c.isConnectable   = self.isConnectable;
+    c.serviceUUIDs    = self.serviceUUIDs;
+    c.lastRSSI        = self.lastRSSI;
+    c.firstSeen       = self.firstSeen;
+    c.lastSeen        = self.lastSeen;
+    c.updateCount     = self.updateCount;
+    c.records         = [NSMutableArray arrayWithArray:self.records];
     return c;
+}
+
+- (NSString *)bestDisplayName {
+    if (self.peripheralName.length > 0) return self.peripheralName;
+    if (self.advLocalName.length > 0)   return self.advLocalName;
+    return [self inferredDeviceCategory];
+}
+
+- (double)advertsPerSecond {
+    NSTimeInterval span = [self.lastSeen timeIntervalSinceDate:self.firstSeen];
+    if (span <= 0.001 || self.updateCount == 0) return 0.0;
+    return (double)self.updateCount / span;
+}
+
+- (NSNumber *)estimatedDistanceMeters {
+    if (self.lastRSSI == 0) return nil;
+    // Reference: BLE iBeacon convention. txPower is measured RSSI at 1 m.
+    // Without it we fall back to a typical Apple Continuity value of -59 dBm.
+    NSInteger tx = self.txPower ? self.txPower.integerValue : -59;
+    double ratio = (double)(tx - self.lastRSSI) / 22.0;  // 10 * n; n=2.2 indoor
+    double d = pow(10.0, ratio);
+    if (d < 0.1)  d = 0.1;
+    if (d > 60.0) d = 60.0;
+    return @(d);
 }
 
 - (IPContinuityRecord *)_latestRecordOfType:(IPContinuityType)type {

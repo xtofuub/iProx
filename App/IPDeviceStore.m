@@ -28,8 +28,9 @@ NSNotificationName const IPDeviceStoreDidChangeNotification = @"IPDeviceStoreDid
 
 - (void)ingestRecords:(NSArray<IPContinuityRecord *> *)records
         forIdentifier:(NSString *)identifier
-                 rssi:(NSInteger)rssi {
-    if (records.count == 0 || identifier.length == 0) return;
+                 rssi:(NSInteger)rssi
+             metadata:(NSDictionary<NSString *, id> *)metadata {
+    if (identifier.length == 0) return;
     dispatch_async(self.lock, ^{
         IPDeviceEntry *entry = self.devicesByID[identifier];
         if (!entry) {
@@ -39,17 +40,33 @@ NSNotificationName const IPDeviceStoreDidChangeNotification = @"IPDeviceStoreDid
         }
         entry.lastRSSI = rssi;
         entry.lastSeen = [NSDate date];
-        entry.updateCount += records.count;
-        for (IPContinuityRecord *r in records) {
-            r.mac = identifier;
-            r.rssi = rssi;
-            [entry.records addObject:r];
-            // Cap per-device history to keep memory bounded.
-            if (entry.records.count > 80) {
-                [entry.records removeObjectsInRange:NSMakeRange(0, entry.records.count - 80)];
+        if (records.count > 0) {
+            entry.updateCount += records.count;
+            for (IPContinuityRecord *r in records) {
+                r.mac = identifier;
+                r.rssi = rssi;
+                [entry.records addObject:r];
+                if (entry.records.count > 80) {
+                    [entry.records removeObjectsInRange:NSMakeRange(0, entry.records.count - 80)];
+                }
             }
+            self.totalAppleRecordCount += records.count;
         }
-        self.totalAppleRecordCount += records.count;
+
+        // Sticky metadata: only overwrite when the new advert actually
+        // carries a non-nil value. Apple devices alternate which keys they
+        // emit per advert, so missing == 'keep last known'.
+        NSString *pn = metadata[@"peripheral_name"];
+        if (pn.length > 0) entry.peripheralName = pn;
+        NSString *ln = metadata[@"adv_local_name"];
+        if (ln.length > 0) entry.advLocalName = ln;
+        NSNumber *tx = metadata[@"tx_power"];
+        if (tx) entry.txPower = tx;
+        NSNumber *con = metadata[@"connectable"];
+        if (con) entry.isConnectable = con;
+        NSArray *svc = metadata[@"services"];
+        if (svc.count > 0) entry.serviceUUIDs = svc;
+
         [self _postChangeThrottledLocked];
     });
 }

@@ -15,7 +15,8 @@ extern NSNotificationName const IPDeviceStoreDidChangeNotification;
 - (NSUInteger)deviceCount;
 - (void)ingestRecords:(NSArray<IPContinuityRecord *> *)records
         forIdentifier:(NSString *)identifier
-                 rssi:(NSInteger)rssi;
+                 rssi:(NSInteger)rssi
+             metadata:(nullable NSDictionary<NSString *, id> *)metadata;
 - (void)clearAll;
 
 @property (atomic, assign) NSUInteger totalDiscoveryCount;
