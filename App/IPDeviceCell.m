@@ -112,8 +112,10 @@
         @"AirPlay Target":  @"airplayvideo",
         @"AirDrop Sender":  @"square.and.arrow.up",
         @"FindMy Beacon":   @"location.circle",
+        @"Apple Device":    @"applelogo",
+        @"Mac":             @"laptopcomputer",
     };
-    NSString *name = map[cat] ?: @"questionmark.circle";
+    NSString *name = map[cat] ?: @"applelogo";
     return [UIImage systemImageNamed:name];
 }
 
@@ -150,6 +152,10 @@
         else if ([b isEqualToString:@"AirPods"]) bg = [UIColor systemIndigoColor];
         else if ([b isEqualToString:@"iCloud"]) bg = [UIColor systemPurpleColor];
         else if ([b isEqualToString:@"Handoff"]) bg = [UIColor systemPinkColor];
+        else if ([b isEqualToString:@"Siri"]) bg = [UIColor systemRedColor];
+        else if ([b isEqualToString:@"Hotspot"]) bg = [UIColor systemGreenColor];
+        else if ([b isEqualToString:@"Tether"]) bg = [UIColor systemGreenColor];
+        else if ([b isEqualToString:@"Action"]) bg = [UIColor systemYellowColor];
         [self.badgesStack addArrangedSubview:[self _badgeLabel:b bg:bg]];
     }
 

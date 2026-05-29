@@ -50,13 +50,44 @@
         NSString *model = pp.fields[@"model"];
         NSString *bL = pp.fields[@"battery_left"] ?: @"?";
         NSString *bR = pp.fields[@"battery_right"] ?: @"?";
-        if (model) return [NSString stringWithFormat:@"%@  L:%@  R:%@", model, bL, bR];
+        NSString *bc = pp.fields[@"case_battery"];
+        if (model) {
+            if (bc) return [NSString stringWithFormat:@"%@  L:%@  R:%@  case:%@", model, bL, bR, bc];
+            return [NSString stringWithFormat:@"%@  L:%@  R:%@", model, bL, bR];
+        }
+    }
+    IPContinuityRecord *wc = [self _latestRecordOfType:IPContinuityTypeWatchConnection];
+    if (wc) {
+        BOOL locked   = [wc.fields[@"watch_locked"] boolValue];
+        BOOL active   = [wc.fields[@"watch_active"] boolValue];
+        BOOL charging = [wc.fields[@"watch_charging"] boolValue];
+        return [NSString stringWithFormat:@"%@%@%@",
+                locked   ? @"locked "   : @"unlocked ",
+                active   ? @"active "   : @"idle ",
+                charging ? @"charging" : @""];
     }
     IPContinuityRecord *ni = [self _latestRecordOfType:IPContinuityTypeNearbyInfo];
     if (ni) {
         NSString *lock = ni.fields[@"lock_state"] ?: @"?";
         NSNumber *act = ni.fields[@"activity_level"];
         return [NSString stringWithFormat:@"%@  activity=%@", lock, act ?: @"?"];
+    }
+    IPContinuityRecord *ap = [self _latestRecordOfType:IPContinuityTypeAirPlayTarget];
+    if (ap) {
+        NSString *ip = ap.fields[@"ipv4"];
+        if (ip) return [NSString stringWithFormat:@"AirPlay  %@", ip];
+    }
+    IPContinuityRecord *na = [self _latestRecordOfType:IPContinuityTypeNearbyAction];
+    if (na) {
+        NSString *name = na.fields[@"action_name"];
+        if (name) return [NSString stringWithFormat:@"action: %@", name];
+    }
+    IPContinuityRecord *fm = [self _latestRecordOfType:IPContinuityTypeFindMy];
+    if (fm) {
+        NSNumber *batt = fm.fields[@"battery_state"];
+        BOOL lost = [fm.fields[@"lost_mode"] boolValue];
+        return [NSString stringWithFormat:@"FindMy  batt=%@%@",
+                batt ?: @"?", lost ? @"  LOST" : @""];
     }
     IPContinuityRecord *ad = [self _latestRecordOfType:IPContinuityTypeAirDrop];
     if (ad) {
@@ -88,8 +119,12 @@
         NSString *lock = ni.fields[@"lock_state"];
         if ([lock isEqualToString:@"locked"]) [out addObject:@"Lock"];
     }
-    if ([self _latestRecordOfType:IPContinuityTypeHandoff]) [out addObject:@"Handoff"];
-    if ([self _latestRecordOfType:IPContinuityTypeFindMy])  [out addObject:@"FindMy"];
+    if ([self _latestRecordOfType:IPContinuityTypeHandoff])          [out addObject:@"Handoff"];
+    if ([self _latestRecordOfType:IPContinuityTypeFindMy])           [out addObject:@"FindMy"];
+    if ([self _latestRecordOfType:IPContinuityTypeHeySiri])          [out addObject:@"Siri"];
+    if ([self _latestRecordOfType:IPContinuityTypeTetheringSource])  [out addObject:@"Hotspot"];
+    if ([self _latestRecordOfType:IPContinuityTypeTetheringTarget])  [out addObject:@"Tether"];
+    if ([self _latestRecordOfType:IPContinuityTypeNearbyAction])     [out addObject:@"Action"];
     return out;
 }
 
